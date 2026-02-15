@@ -207,13 +207,6 @@ Caminho-alvo de deploy:
 - AWS X-Ray ou pipeline OpenTelemetry
 - S3 para relatorios de conciliacao
 
-## Proximos passos
-
-1. Adicionar contract testing (Pact) entre produtores e consumidores.
-2. Adicionar testes completos de integracao/e2e com Testcontainers.
-3. Adicionar Keycloak no compose para fluxo OAuth2 real.
-4. Adicionar modulo Terraform para ECS/RDS/Amazon MQ.
-5. Adicionar exportacao de relatorio de conciliacao para S3.
 
 ## ATS keywords
 
