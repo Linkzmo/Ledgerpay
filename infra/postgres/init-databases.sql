@@ -1,0 +1,4 @@
+CREATE DATABASE paymentsdb;
+CREATE DATABASE riskdb;
+CREATE DATABASE ledgerdb;
+CREATE DATABASE notificationsdb;

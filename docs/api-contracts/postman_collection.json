@@ -1,0 +1,49 @@
+{
+  "info": {
+    "name": "Ledgerpay",
+    "_postman_id": "f0f77fd6-f95f-4fb8-a86d-b4bd5c2f0e11",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Create Payment",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" },
+          { "key": "Idempotency-Key", "value": "{{idempotency_key}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{payments_url}}/api/payments",
+          "host": ["{{payments_url}}"],
+          "path": ["api", "payments"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"amount\": 100.50,\n  \"currency\": \"BRL\",\n  \"payerId\": \"customer-001\",\n  \"merchantId\": \"merchant-abc\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Get Reconciliation",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{token}}" }
+        ],
+        "url": {
+          "raw": "{{ledger_url}}/api/reconciliation",
+          "host": ["{{ledger_url}}"],
+          "path": ["api", "reconciliation"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "payments_url", "value": "http://localhost:8081" },
+    { "key": "ledger_url", "value": "http://localhost:8082" },
+    { "key": "idempotency_key", "value": "key-001" },
+    { "key": "token", "value": "replace-with-jwt" }
+  ]
+}

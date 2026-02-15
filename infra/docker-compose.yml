@@ -1,0 +1,198 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: ledgerpay-postgres
+    environment:
+      POSTGRES_USER: ledgerpay
+      POSTGRES_PASSWORD: ledgerpay
+      POSTGRES_DB: ledgerpay
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init-databases.sql:/docker-entrypoint-initdb.d/01-init-databases.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ledgerpay -d ledgerpay"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: ledgerpay-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  redis:
+    image: redis:7
+    container_name: ledgerpay-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    container_name: ledgerpay-otel-collector
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8889:8889"
+    depends_on:
+      - jaeger
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: ledgerpay-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4319:4317"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: ledgerpay-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: ledgerpay-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+
+  payments-api:
+    build:
+      context: ..
+      dockerfile: services/payments/src/Payments.Api/Dockerfile
+    container_name: ledgerpay-payments-api
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=paymentsdb;Username=ledgerpay;Password=ledgerpay
+      ConnectionStrings__Redis: redis:6379
+      RabbitMq__HostName: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+      RabbitMq__VirtualHost: /
+      RabbitMq__ExchangeName: ledgerpay.events
+      RabbitMq__RetryLimit: 3
+      RabbitMq__RetryDelayMs: 4000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    ports:
+      - "8081:8080"
+
+  risk-worker:
+    build:
+      context: ..
+      dockerfile: services/risk/src/Risk.Worker/Dockerfile
+    container_name: ledgerpay-risk-worker
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=riskdb;Username=ledgerpay;Password=ledgerpay
+      RabbitMq__HostName: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+      RabbitMq__VirtualHost: /
+      RabbitMq__ExchangeName: ledgerpay.events
+      RabbitMq__RetryLimit: 3
+      RabbitMq__RetryDelayMs: 4000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  ledger-api:
+    build:
+      context: ..
+      dockerfile: services/ledger/src/Ledger.Api/Dockerfile
+    container_name: ledgerpay-ledger-api
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=ledgerdb;Username=ledgerpay;Password=ledgerpay
+      RabbitMq__HostName: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+      RabbitMq__VirtualHost: /
+      RabbitMq__ExchangeName: ledgerpay.events
+      RabbitMq__RetryLimit: 3
+      RabbitMq__RetryDelayMs: 4000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    ports:
+      - "8082:8080"
+
+  notifications-worker:
+    build:
+      context: ..
+      dockerfile: services/notifications/src/Notifications.Worker/Dockerfile
+    container_name: ledgerpay-notifications-worker
+    environment:
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=notificationsdb;Username=ledgerpay;Password=ledgerpay
+      RabbitMq__HostName: rabbitmq
+      RabbitMq__Port: 5672
+      RabbitMq__Username: guest
+      RabbitMq__Password: guest
+      RabbitMq__VirtualHost: /
+      RabbitMq__ExchangeName: ledgerpay.events
+      RabbitMq__RetryLimit: 3
+      RabbitMq__RetryDelayMs: 4000
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+volumes:
+  postgres_data:
